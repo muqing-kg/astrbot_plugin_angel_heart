@@ -24,7 +24,7 @@
 
 ### 系统级唤醒词（可选）
 
-配置 `enable_system_wake_prefix` 开启后，消息以 AstrBot `provider_settings.wake_prefix` 开头时，等价于点名唤醒进入插件链路。前缀内容由 AstrBot 配置决定，可为任意词或符号。关闭后沿用现有行为。该判定仍受群聊白名单约束：白名单外群聊即使命中前缀也不进插件。
+配置 `enable_system_wake_prefix` 开启后，消息以 AstrBot 顶层 `wake_prefix`（列表，默认 `["/"]`）开头时，等价于点名唤醒进入插件链路。前缀内容由 AstrBot 配置决定，可为任意词或符号。关闭后沿用现有行为。该判定仍受群聊白名单约束：白名单外群聊即使命中前缀也不进插件。
 
 ### 私聊
 

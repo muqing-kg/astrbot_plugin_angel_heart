@@ -156,14 +156,21 @@ class DummyEvent:
 def _make_plugin(
     *,
     enable_system_wake_prefix: bool = False,
-    provider_wake_prefix: str = "/",
+    provider_wake_prefix: str | list[str] = "/",
     whitelist_enabled: bool = False,
     chat_ids: tuple = ("1",),
 ) -> AngelHeartPlugin:
     plugin = AngelHeartPlugin.__new__(AngelHeartPlugin)
     plugin.context = SimpleNamespace(
         get_config=lambda chat_id: {
-            "provider_settings": {"wake_prefix": provider_wake_prefix}
+            # AstrBot 系统级唤醒词在顶层 wake_prefix（list[str]）
+            "wake_prefix": (
+                provider_wake_prefix
+                if isinstance(provider_wake_prefix, list)
+                else [provider_wake_prefix]
+            ),
+            # 保留旧字段仅作兼容回归
+            "provider_settings": {"wake_prefix": ""},
         }
     )
     plugin.config_manager = SimpleNamespace(
@@ -203,6 +210,50 @@ def test_switch_on_supports_arbitrary_prefix():
     assert plugin._is_provider_wake_prefix_event(event) is True
     assert plugin._should_process(event) is True
     assert event.get_extra("angelheart_provider_wake_prefix") is True
+
+
+def test_switch_on_supports_multiple_prefixes():
+    plugin = _make_plugin(
+        enable_system_wake_prefix=True,
+        provider_wake_prefix=["/", "bot"],
+    )
+    event = DummyEvent("bot 帮我看下", chat_id="aiocqhttp:GroupMessage:1")
+
+    assert plugin._is_provider_wake_prefix_event(event) is True
+    assert plugin._should_process(event) is True
+
+
+def test_reads_top_level_wake_prefix_not_provider_settings():
+    """系统级唤醒词读取顶层 wake_prefix，不误用 provider_settings.wake_prefix。"""
+    plugin = AngelHeartPlugin.__new__(AngelHeartPlugin)
+    plugin.context = SimpleNamespace(
+        get_config=lambda chat_id: {
+            "wake_prefix": ["/"],
+            "provider_settings": {"wake_prefix": "should-not-use"},
+        }
+    )
+    plugin.config_manager = SimpleNamespace(
+        enable_system_wake_prefix=True,
+        whitelist_enabled=False,
+        chat_ids=["1"],
+        takeover_private_chat_context=False,
+        group_chat_enhancement=True,
+    )
+    plugin._whitelist_cache = {"1"}
+    plugin._runtime_tasks = RuntimeTaskTracker()
+
+    event = DummyEvent("/hello", chat_id="aiocqhttp:GroupMessage:1")
+    assert plugin._is_provider_wake_prefix_event(event) is True
+
+    # 顶层为空、provider_settings 有值时才回退
+    plugin.context = SimpleNamespace(
+        get_config=lambda chat_id: {
+            "wake_prefix": [],
+            "provider_settings": {"wake_prefix": "bot"},
+        }
+    )
+    event2 = DummyEvent("bot hi", chat_id="aiocqhttp:GroupMessage:1")
+    assert plugin._is_provider_wake_prefix_event(event2) is True
 
 
 def test_switch_on_requires_wake_and_configured_prefix():
