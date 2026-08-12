@@ -163,14 +163,11 @@ def _make_plugin(
     plugin = AngelHeartPlugin.__new__(AngelHeartPlugin)
     plugin.context = SimpleNamespace(
         get_config=lambda chat_id: {
-            # AstrBot 系统级唤醒词在顶层 wake_prefix（list[str]）
             "wake_prefix": (
                 provider_wake_prefix
                 if isinstance(provider_wake_prefix, list)
                 else [provider_wake_prefix]
-            ),
-            # 保留旧字段仅作兼容回归
-            "provider_settings": {"wake_prefix": ""},
+            )
         }
     )
     plugin.config_manager = SimpleNamespace(
@@ -229,7 +226,6 @@ def test_reads_top_level_wake_prefix_not_provider_settings():
     plugin.context = SimpleNamespace(
         get_config=lambda chat_id: {
             "wake_prefix": ["/"],
-            "provider_settings": {"wake_prefix": "should-not-use"},
         }
     )
     plugin.config_manager = SimpleNamespace(
@@ -245,7 +241,7 @@ def test_reads_top_level_wake_prefix_not_provider_settings():
     event = DummyEvent("/hello", chat_id="aiocqhttp:GroupMessage:1")
     assert plugin._is_provider_wake_prefix_event(event) is True
 
-    # 顶层为空、provider_settings 有值时才回退
+    # 顶层为空时不回退 provider_settings.wake_prefix
     plugin.context = SimpleNamespace(
         get_config=lambda chat_id: {
             "wake_prefix": [],
@@ -253,7 +249,7 @@ def test_reads_top_level_wake_prefix_not_provider_settings():
         }
     )
     event2 = DummyEvent("bot hi", chat_id="aiocqhttp:GroupMessage:1")
-    assert plugin._is_provider_wake_prefix_event(event2) is True
+    assert plugin._is_provider_wake_prefix_event(event2) is False
 
 
 def test_switch_on_requires_wake_and_configured_prefix():

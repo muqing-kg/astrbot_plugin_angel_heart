@@ -352,22 +352,10 @@ class AngelHeartPlugin(Star):
         """读取 AstrBot 系统级唤醒前缀列表。
 
         AstrBot waking_check 使用顶层配置 wake_prefix（list[str]，默认 ["/"]）。
-        provider_settings.wake_prefix 是另一项字符串配置，默认空，不用于系统唤醒。
         """
         prefixes: list[str] = []
         try:
-            astrbot_conf = None
-            try:
-                astrbot_conf = self.context.get_config(chat_id)
-            except TypeError:
-                # 兼容旧签名 get_config()
-                astrbot_conf = self.context.get_config()
-            except Exception:
-                try:
-                    astrbot_conf = self.context.get_config()
-                except Exception:
-                    astrbot_conf = None
-
+            astrbot_conf = self.context.get_config(chat_id)
             if not astrbot_conf:
                 return prefixes
 
@@ -377,19 +365,6 @@ class AngelHeartPlugin(Star):
                     text = str(item or "").strip()
                     if text:
                         prefixes.append(text)
-            elif isinstance(raw, str):
-                text = raw.strip()
-                if text:
-                    prefixes.append(text)
-
-            # 兼容旧读法：仅当顶层为空时，才回退 provider_settings.wake_prefix
-            if not prefixes:
-                provider_settings = astrbot_conf.get("provider_settings", {}) or {}
-                provider_prefix = str(
-                    provider_settings.get("wake_prefix", "") or ""
-                ).strip()
-                if provider_prefix:
-                    prefixes.append(provider_prefix)
         except Exception as e:
             logger.warning(
                 f"AngelHeart[{chat_id}]: 读取 AstrBot 系统级唤醒前缀失败: {e}"
