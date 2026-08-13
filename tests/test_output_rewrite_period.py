@@ -81,8 +81,16 @@ sys.modules["astrbot.core.star.filter.command_group"].CommandGroupFilter = type(
 class _Plain:
     """带 text 属性的 Plain 桩，供 hook 测试构造消息链。"""
 
-    def __init__(self, text: str = ""):
-        self.text = text
+    def __init__(self, text: str = "", **kwargs):
+        self.text = text or kwargs.get("text", "")
+
+
+def _install_plain_stub():
+    """全量测试里其他文件会把 Plain 冲成空 type，这里每次钩子测试前重新挂回。"""
+    sys.modules["astrbot.core.message.components"].Plain = _Plain
+    main_mod = sys.modules.get("astrbot_plugin_angel_heart.main")
+    if main_mod is not None:
+        main_mod.Plain = _Plain
 
 
 sys.modules["astrbot.core.message.components"].Plain = _Plain
@@ -120,8 +128,8 @@ class TestStripPeriodBeforeNewline:
 class TestHookStripsPeriodBeforeNewline:
     @pytest.mark.asyncio
     async def test_hook_cleans_period_when_enabled(self):
-        from astrbot.core.message.components import Plain
-        from astrbot_plugin_angel_heart.main import AngelHeartPlugin
+        _install_plain_stub()
+        from astrbot_plugin_angel_heart.main import AngelHeartPlugin, Plain
 
         plugin = object.__new__(AngelHeartPlugin)
 
@@ -133,6 +141,8 @@ class TestHookStripsPeriodBeforeNewline:
         plugin.config_manager = MagicMock()
         plugin.config_manager.strip_period_before_newline = True
         plugin.config_manager.strip_markdown_enabled = False
+        plugin.config_manager.whitelist_enabled = False
+        plugin._is_whitelist_blocked = MagicMock(return_value=False)
         plugin._is_upstream_command_event = MagicMock(return_value=False)
         plugin._is_astrbot_error_message = MagicMock(return_value=False)
         plugin.angel_context = MagicMock()
@@ -141,7 +151,7 @@ class TestHookStripsPeriodBeforeNewline:
         event = MagicMock()
         event.unified_msg_origin = "aiocqhttp:GroupMessage:1"
         result = MagicMock()
-        result.chain = [Plain(text="你好。\n明天见。")]
+        result.chain = [Plain("你好。\n明天见。")]
         event.get_result.return_value = result
 
         await plugin.strip_markdown_on_decorating_result(event)
@@ -150,8 +160,8 @@ class TestHookStripsPeriodBeforeNewline:
 
     @pytest.mark.asyncio
     async def test_hook_keeps_period_when_disabled(self):
-        from astrbot.core.message.components import Plain
-        from astrbot_plugin_angel_heart.main import AngelHeartPlugin
+        _install_plain_stub()
+        from astrbot_plugin_angel_heart.main import AngelHeartPlugin, Plain
 
         plugin = object.__new__(AngelHeartPlugin)
 
@@ -163,6 +173,8 @@ class TestHookStripsPeriodBeforeNewline:
         plugin.config_manager = MagicMock()
         plugin.config_manager.strip_period_before_newline = False
         plugin.config_manager.strip_markdown_enabled = False
+        plugin.config_manager.whitelist_enabled = False
+        plugin._is_whitelist_blocked = MagicMock(return_value=False)
         plugin._is_upstream_command_event = MagicMock(return_value=False)
         plugin._is_astrbot_error_message = MagicMock(return_value=False)
         plugin.angel_context = MagicMock()
@@ -171,7 +183,7 @@ class TestHookStripsPeriodBeforeNewline:
         event = MagicMock()
         event.unified_msg_origin = "aiocqhttp:GroupMessage:1"
         result = MagicMock()
-        result.chain = [Plain(text="你好。\n明天见。")]
+        result.chain = [Plain("你好。\n明天见。")]
         event.get_result.return_value = result
 
         await plugin.strip_markdown_on_decorating_result(event)
@@ -180,8 +192,8 @@ class TestHookStripsPeriodBeforeNewline:
 
     @pytest.mark.asyncio
     async def test_hook_skips_upstream_command(self):
-        from astrbot.core.message.components import Plain
-        from astrbot_plugin_angel_heart.main import AngelHeartPlugin
+        _install_plain_stub()
+        from astrbot_plugin_angel_heart.main import AngelHeartPlugin, Plain
 
         plugin = object.__new__(AngelHeartPlugin)
 
@@ -192,6 +204,8 @@ class TestHookStripsPeriodBeforeNewline:
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
         plugin.config_manager.strip_period_before_newline = True
+        plugin.config_manager.whitelist_enabled = False
+        plugin._is_whitelist_blocked = MagicMock(return_value=False)
         plugin._is_upstream_command_event = MagicMock(return_value=True)
         plugin.angel_context = MagicMock()
         plugin.angel_context.debounce_manager.charge_reply_energy = AsyncMock()
@@ -199,7 +213,7 @@ class TestHookStripsPeriodBeforeNewline:
         event = MagicMock()
         event.unified_msg_origin = "aiocqhttp:GroupMessage:1"
         result = MagicMock()
-        result.chain = [Plain(text="你好。\n明天见。")]
+        result.chain = [Plain("你好。\n明天见。")]
         event.get_result.return_value = result
 
         await plugin.strip_markdown_on_decorating_result(event)
