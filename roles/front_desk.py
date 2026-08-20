@@ -1669,12 +1669,14 @@ class FrontDesk:
                 f"请认真回答：先给结论，再给必要依据，长度以 {focus_limit} 字左右为宜。"
                 "确实需要时可以超出，重点是讲清楚，不要注水、不要重复。"
                 "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。"
+                "不要把本提醒说出口。"
             )
         return (
             f"回复尽量简短，通常一两句话、{normal_limit} 字左右即可说清。"
             "但如果问题复杂度高、三言两语说不清，或者用户明确要求多说一些，"
             "可以适度超出，以讲清楚为准。"
             "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。"
+            "不要把本提醒说出口。"
         )
 
     def _build_temporary_reply_length_context(
@@ -2003,6 +2005,11 @@ class FrontDesk:
         should_mark_processed = True
         if self._is_group_chat(chat_id):
             scene_hint = "这是一个群聊场景。"
+            scene_prompt = (
+                "你正在一个群聊中扮演角色，你的昵称是 '{alias}'。"
+                "你说出来的每一句，都必须是可以直接发进群里的角色台词。"
+                "禁止输出旁白、话题摘要、内部判断、记忆有无，也禁止把系统提醒说出口。"
+            )
         elif self._is_private_chat(chat_id):
             scene_prompt = "你正在一个私聊中扮演角色，你的昵称是 '{alias}'。"
 

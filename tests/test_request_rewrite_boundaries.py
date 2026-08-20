@@ -218,8 +218,13 @@ def test_group_rewrite_keeps_assistant_history_in_contexts_and_only_current_mess
     assert "第三条当前消息" not in temporary_contexts[0]["content"][0]["text"]
     assert "回复尽量简短，通常一两句话、20 字左右即可说清。" in temporary_contexts[1]["content"][0]["text"]
     assert "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。" in temporary_contexts[1]["content"][0]["text"]
+    assert "不要把本提醒说出口。" in temporary_contexts[1]["content"][0]["text"]
     assert temporary_contexts[1]["angelheart_focus"] is False
-    assert req.system_prompt == "BASE SYSTEM"
+    assert req.system_prompt.startswith("BASE SYSTEM")
+    assert "你正在一个群聊中扮演角色，你的昵称是 'fairy'。" in req.system_prompt
+    assert "可以直接发进群里的角色台词" in req.system_prompt
+    assert "禁止输出旁白、话题摘要、内部判断、记忆有无" in req.system_prompt
+    assert "禁止把系统提醒说出口" in req.system_prompt
 
 
 def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
@@ -260,6 +265,7 @@ def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
     assert length_context["angelheart_focus"] is True
     assert "请认真回答：先给结论，再给必要依据，长度以 200 字左右为宜。" in length_context["content"][0]["text"]
     assert "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。" in length_context["content"][0]["text"]
+    assert "不要把本提醒说出口。" in length_context["content"][0]["text"]
 
 
 def test_private_rewrite_does_not_inject_reply_length_reminder():
