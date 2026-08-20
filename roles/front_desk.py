@@ -1679,13 +1679,13 @@ class FrontDesk:
             "不要把本提醒说出口。"
         )
 
-    def _build_temporary_reply_length_context(
+    def _build_temporary_reply_length_reminder(
         self,
         chat_id: str,
         recent_dialogue: List[Dict],
         prompt_recent_dialogue: List[Dict],
-    ) -> Dict[str, Any] | None:
-        """群聊回复时注入字数提醒；私聊不注入。"""
+    ) -> str | None:
+        """构建群聊字数提醒文本；私聊不注入。"""
         if not self._is_group_chat(chat_id):
             return None
 
@@ -1700,28 +1700,12 @@ class FrontDesk:
                 focus = True
                 break
 
-        reminder = self._build_reply_length_reminder(focus, chat_id)
-        return {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"<system_reminder>\n{reminder}\n</system_reminder>",
-                }
-            ],
-            "sender_id": "angelheart-reply-length",
-            "sender_name": "回复长度",
-            "timestamp": time.time(),
-            "_no_save": True,
-            "is_temporary_context": True,
-            "chat_id": chat_id,
-            "angelheart_focus": focus,
-        }
+        return self._build_reply_length_reminder(focus, chat_id)
 
-    def _build_temporary_work_ledger_context(
+    def _build_temporary_work_ledger_reminder(
         self, chat_id: str, event: AstrMessageEvent | None = None
-    ) -> Dict[str, Any] | None:
-        """构建不保存的工作账本临时提醒（第二人称）。"""
+    ) -> str | None:
+        """构建不保存的工作账本提醒文本（第二人称）。"""
         try:
             work_id = ""
             if event is not None and hasattr(event, "get_extra"):
@@ -1736,21 +1720,29 @@ class FrontDesk:
         if not text or not text.strip():
             return None
 
-        return {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"<system_reminder>\n{text.strip()}\n</system_reminder>",
-                }
-            ],
-            "sender_id": "angelheart-work-ledger",
-            "sender_name": "工作账本",
-            "timestamp": time.time(),
-            "_no_save": True,
-            "is_temporary_context": True,
-            "chat_id": chat_id,
-        }
+        return text.strip()
+
+    def _append_system_reminder_parts(
+        self, req: Any, reminder_texts: List[str]
+    ) -> None:
+        """把系统提醒添加到当前用户消息尾部，不再伪装成假用户上下文。"""
+        if not reminder_texts:
+            return
+        try:
+            from astrbot.core.agent.message import TextPart
+        except Exception as e:
+            logger.warning(f"AngelHeart: 导入 TextPart 失败，跳过系统提醒注入: {e}")
+            return
+
+        if not hasattr(req, "extra_user_content_parts") or req.extra_user_content_parts is None:
+            req.extra_user_content_parts = []
+
+        for reminder in reminder_texts:
+            if not reminder or not reminder.strip():
+                continue
+            req.extra_user_content_parts.append(
+                TextPart(text=f"<system_reminder>\n{reminder.strip()}\n</system_reminder>")
+            )
 
     def _mark_processed_if_needed(
         self,
@@ -2035,19 +2027,20 @@ class FrontDesk:
             recent_dialogue, current_message_id
         )
 
-        # 4. 注入工作账本临时提醒（不保存），不再注入秘书决策建议
-        work_context = self._build_temporary_work_ledger_context(chat_id, event)
-        if work_context:
-            new_contexts.append(work_context)
-
-        # 4.1 群聊注入回复字数提醒（常规/焦点）
-        length_context = self._build_temporary_reply_length_context(
+        # 4. 注入系统提醒到当前用户消息尾部，不再伪装成假用户上下文。
+        #    工作账本与字数提醒都走同一通道，防止模型把内部提醒当成台词念出。
+        reminder_texts: List[str] = []
+        work_reminder = self._build_temporary_work_ledger_reminder(chat_id, event)
+        if work_reminder:
+            reminder_texts.append(work_reminder)
+        length_reminder = self._build_temporary_reply_length_reminder(
             chat_id,
             context_recent_dialogue,
             prompt_recent_dialogue,
         )
-        if length_context:
-            new_contexts.append(length_context)
+        if length_reminder:
+            reminder_texts.append(length_reminder)
+        self._append_system_reminder_parts(req, reminder_texts)
 
         # 5. 根据 Provider 的 modalities 配置过滤图片内容
         new_contexts = self.filter_images_for_provider(chat_id, new_contexts)
