@@ -249,7 +249,7 @@ class TestAnalyzerPromptInjection:
 
 
 class TestTemporaryWorkContext:
-    def test_front_desk_builds_no_save_work_context_without_repeating_current_prompt(self):
+    def test_front_desk_builds_work_ledger_reminder_without_repeating_current_prompt(self):
         from astrbot_plugin_angel_heart.roles.front_desk import FrontDesk
 
         config = MagicMock()
