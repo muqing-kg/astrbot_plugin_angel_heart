@@ -109,14 +109,14 @@
         <div class="sidebar-footer">
         <a
           v-if="!sidebarCollapsed"
-          href="https://github.com/kawayiYokami/astrbot_plugin_angel_heart"
+          href="https://github.com/muqing-kg/astrbot_plugin_angel_heart"
           target="_blank"
           rel="noopener"
           class="footer-link"
         >⭐ Star</a>
         <a
           v-if="!sidebarCollapsed"
-          href="https://github.com/kawayiYokami/astrbot_plugin_angel_heart/issues/new"
+          href="https://github.com/muqing-kg/astrbot_plugin_angel_heart/issues/new"
           target="_blank"
           rel="noopener"
           class="footer-link"
