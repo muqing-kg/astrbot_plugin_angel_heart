@@ -298,6 +298,20 @@ class AngelHeartPlugin(Star):
         parts = unified_id.split(":")
         return len(parts) >= 3 and parts[1] == "FriendMessage"
 
+    def _is_group_chat(self, unified_id: str) -> bool:
+        """根据 unified_msg_origin 判断是否为群聊。"""
+        parts = unified_id.split(":")
+        return len(parts) >= 3 and parts[1] == "GroupMessage"
+
+    def _should_strip_group_aside_leak(self, event: AstrMessageEvent) -> bool:
+        """仅对天使之心放行的群聊主脑回复做旁白结构性清洗。"""
+        try:
+            if not self._is_group_chat(event.unified_msg_origin):
+                return False
+            return bool(event.get_extra("angelheart_assistant_invoked", False))
+        except Exception:
+            return False
+
     def _is_upstream_command_event(self, event: AstrMessageEvent) -> bool:
         """判断当前事件是否已命中上游 command/skill 处理器。"""
         try:
@@ -518,21 +532,31 @@ class AngelHeartPlugin(Star):
                                     f"AngelHeart[{chat_id}]: 已清理句末句号: '{original_text[:50]}...' -> '{cleaned_text[:50]}...'"
                                 )
 
-            leftover_text = ""
-            for i, component in enumerate(list(message_chain)):
-                if not isinstance(component, Plain) or not component.text:
-                    continue
-                cleaned_text = strip_group_aside_leak(component.text)
-                if cleaned_text != component.text:
-                    message_chain[i] = Plain(text=cleaned_text)
-                leftover_text += cleaned_text
-            if leftover_text.strip() == "" and all(
-                isinstance(component, Plain) for component in message_chain
-            ):
-                result = event.get_result()
-                if result:
-                    result.chain = []
-                return
+            # 4. 群聊主脑回复：结构化旁白兜底清洗。
+            #    只清洗天使之心自己放行的群聊回复，避免误伤私聊或其他插件输出。
+            if self._should_strip_group_aside_leak(event):
+                leftover_text = ""
+                for i, component in enumerate(list(message_chain)):
+                    if not isinstance(component, Plain) or not component.text:
+                        continue
+                    cleaned_text = strip_group_aside_leak(component.text)
+                    if cleaned_text != component.text:
+                        message_chain[i] = Plain(text=cleaned_text)
+                    leftover_text += cleaned_text
+                if leftover_text.strip() == "":
+                    non_plain_components = [
+                        component
+                        for component in message_chain
+                        if not isinstance(component, Plain)
+                    ]
+                    if not non_plain_components:
+                        result = event.get_result()
+                        if result:
+                            result.chain = []
+                        return
+                    result = event.get_result()
+                    if result:
+                        result.chain = non_plain_components
 
             await self.angel_context.debounce_manager.charge_reply_energy(
                 event, message_chain

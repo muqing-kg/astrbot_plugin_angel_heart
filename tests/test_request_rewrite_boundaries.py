@@ -237,6 +237,46 @@ def test_group_rewrite_keeps_assistant_history_in_contexts_and_only_current_mess
     assert "不要把本提醒说出口。" in req.system_prompt
 
 
+def test_group_rewrite_adds_boundary_placeholder_when_history_starts_with_assistant():
+    import asyncio
+
+    fd, _ = _front_desk()
+    req = SimpleNamespace(
+        contexts=[],
+        prompt="",
+        image_urls=[],
+        extra_user_content_parts=[],
+        system_prompt="BASE SYSTEM",
+    )
+    event = _event("m2")
+    recent_dialogue = [
+        {
+            "role": "assistant",
+            "content": "上一条是助理发言",
+            "sender_name": "assistant",
+            "sender_id": "bot",
+            "timestamp": 1.0,
+            "chat_id": "aiocqhttp:GroupMessage:10000",
+            "source_message_id": "m1",
+        },
+        {
+            "role": "user",
+            "content": "第二条当前消息",
+            "sender_name": "甲",
+            "sender_id": "1001",
+            "timestamp": 2.0,
+            "chat_id": "aiocqhttp:GroupMessage:10000",
+            "source_message_id": "m2",
+        },
+    ]
+
+    asyncio.run(_run_group_rewrite(fd, event, req, recent_dialogue, historical_context=[]))
+
+    assert req.contexts[0]["role"] == "user"
+    assert "（历史记录）" in req.contexts[0]["content"][0]["text"]
+    assert "这是一个群聊场景。" not in req.prompt
+
+
 def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
     import asyncio
 

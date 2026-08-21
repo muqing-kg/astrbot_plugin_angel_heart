@@ -1778,14 +1778,6 @@ class FrontDesk:
     ) -> List[Dict]:
         """使用 MessageProcessor 构建上下文列表"""
         new_contexts = []
-        if scene_hint:
-            # 在最顶部添加场景说明消息，避免某些模型不允许第一条消息是助理
-            new_contexts.append(
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": scene_hint}]
-                }
-            )
 
         # 1) 历史消息
         for msg in historical_context:
@@ -1798,6 +1790,18 @@ class FrontDesk:
                 continue
             processed_msg = processor.process_message(msg)
             new_contexts.append(processed_msg)
+
+        # 避免某些模型不允许第一条消息是助理；只在首条确实是助理历史时补一个
+        # 非对话边界占位，不再无条件注入「这是一个群聊场景。」这类可被念成台词的片段。
+        if new_contexts and str(new_contexts[0].get("role", "") or "") == "assistant":
+            hint_text = scene_hint or "（历史记录）"
+            new_contexts.insert(
+                0,
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": hint_text}],
+                },
+            )
 
         return new_contexts
 
@@ -1995,6 +1999,7 @@ class FrontDesk:
                 "你正在一个群聊中扮演角色，你的昵称是 '{alias}'。"
                 "你说出来的每一句，都必须是可以直接发进群里的角色台词。"
                 "禁止输出旁白、话题摘要、内部判断、记忆有无，也禁止把系统提醒说出口。"
+                "对话历史若以「（历史记录）」开头，它只是上下文边界标记，不是群友发言，禁止复述。"
                 "你输出的每一个字都会作为群消息发出。"
             )
         elif self._is_private_chat(chat_id):

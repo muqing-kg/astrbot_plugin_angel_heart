@@ -109,35 +109,43 @@ def strip_period_before_newline(text: str) -> str:
     return re.sub(r"。(\r?\n)", r"\1", text)
 
 
-_ASIDE_LINE_PATTERNS = (
-    re.compile(r"群友在聊|群里.{0,8}(人挺多|正在|在讨论|在聊)|话题摘要|当前话题|参考核心话题"),
-    re.compile(r"简短接话|别刷屏|不要刷屏|回复尽量简短|字左右即可|先给结论|不要把本提醒说出口"),
-    re.compile(r"(没|没有|无).{0,8}(相关)?记忆|记忆有无|工作账本|继续观察|我不接|安静待着"),
-    re.compile(r"^依据如下|^内部判断|^系统提醒|推荐执行策略|建议交互对象"),
+_ASIDE_TAG_LINE = re.compile(
+    r"^\s*(?:"
+    r"话题摘要|当前话题|参考核心话题|建议交互对象|推荐执行策略|继续观察|"
+    r"依据如下|内部判断|系统提醒|工作账本|助理工作账本|记忆有无|记忆状态|"
+    r"回复策略|决策结果"
+    r")\s*[：:]"
 )
-_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+
+_THINK_BLOCK_PATTERNS = (
+    re.compile(r" thinking[\s\S]*? response", re.IGNORECASE),
+    re.compile(r"<(?:thinking|thought|analysis)>[\s\S]*?</(?:thinking|thought|analysis)>", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\[(?:thinking|thought|analysis)\][\s\S]*?\[/(?:thinking|thought|analysis)\]", re.IGNORECASE | re.DOTALL),
+    re.compile(r"```[ \t]*(?:thinking|thought|analysis)[\s\S]*?```", re.IGNORECASE | re.DOTALL),
+)
 _SYSTEM_REMINDER_BLOCK = re.compile(
-    r"<system_reminder>[\s\S]*?</system_reminder>", re.IGNORECASE
+    r"<(?:system_reminder|系统提醒)>[\s\S]*?</(?:system_reminder|系统提醒)>",
+    re.IGNORECASE | re.DOTALL,
 )
 _DECISION_XML_BLOCK = re.compile(
-    r"<系统决策>[\s\S]*?</系统决策>"
+    r"<系统决策>[\s\S]*?</系统决策>", re.IGNORECASE | re.DOTALL
 )
 
 
 def strip_group_aside_leak(text: str) -> str:
-    """去掉群聊输出里的内部旁白、系统提醒和思维块。"""
+    """去掉群聊输出里的结构化内部块与带标签旁白行。"""
     if not text:
         return text
 
-    cleaned = _THINK_BLOCK.sub("", text)
+    cleaned = text
+    for pattern in _THINK_BLOCK_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
     cleaned = _SYSTEM_REMINDER_BLOCK.sub("", cleaned)
     cleaned = _DECISION_XML_BLOCK.sub("", cleaned)
-    kept_lines = []
-    for line in cleaned.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if any(pattern.search(stripped) for pattern in _ASIDE_LINE_PATTERNS):
-            continue
-        kept_lines.append(line)
+
+    kept_lines = [
+        line
+        for line in cleaned.splitlines()
+        if line.strip() and not _ASIDE_TAG_LINE.match(line.strip())
+    ]
     return "\n".join(kept_lines).strip()
