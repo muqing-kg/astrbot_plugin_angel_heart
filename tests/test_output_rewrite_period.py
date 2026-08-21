@@ -140,6 +140,8 @@ class TestHookStripsPeriodBeforeNewline:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = True
         plugin.config_manager.strip_markdown_enabled = False
         plugin.config_manager.whitelist_enabled = False
@@ -172,6 +174,8 @@ class TestHookStripsPeriodBeforeNewline:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = False
         plugin.config_manager.strip_markdown_enabled = False
         plugin.config_manager.whitelist_enabled = False
@@ -204,6 +208,8 @@ class TestHookStripsPeriodBeforeNewline:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = True
         plugin.config_manager.whitelist_enabled = False
         plugin._is_whitelist_blocked = MagicMock(return_value=False)
@@ -295,6 +301,8 @@ class TestHookStripsGroupAsideLeak:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = False
         plugin.config_manager.strip_markdown_enabled = False
         plugin._is_upstream_command_event = MagicMock(return_value=False)
@@ -326,6 +334,8 @@ class TestHookStripsGroupAsideLeak:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = False
         plugin.config_manager.strip_markdown_enabled = False
         plugin._is_upstream_command_event = MagicMock(return_value=False)
@@ -358,6 +368,8 @@ class TestHookStripsGroupAsideLeak:
 
         plugin._runtime_tasks = _FakeRuntimeTasks()
         plugin.config_manager = MagicMock()
+        plugin.config_manager.whitelist_enabled = False
+        plugin._whitelist_cache = set()
         plugin.config_manager.strip_period_before_newline = False
         plugin.config_manager.strip_markdown_enabled = False
         plugin._is_upstream_command_event = MagicMock(return_value=False)
