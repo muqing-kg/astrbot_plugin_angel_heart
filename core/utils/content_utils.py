@@ -107,3 +107,45 @@ def strip_period_before_newline(text: str) -> str:
     if not text:
         return text
     return re.sub(r"。(\r?\n)", r"\1", text)
+
+
+_ASIDE_TAG_LINE = re.compile(
+    r"^\s*(?:"
+    r"话题摘要|当前话题|参考核心话题|建议交互对象|推荐执行策略|继续观察|"
+    r"依据如下|内部判断|系统提醒|工作账本|助理工作账本|记忆有无|记忆状态|"
+    r"回复策略|决策结果"
+    r")\s*[：:]"
+)
+
+_THINK_BLOCK_PATTERNS = (
+    re.compile(r" thinking[\s\S]*? response", re.IGNORECASE),
+    re.compile(r"<(?:thinking|thought|analysis)>[\s\S]*?</(?:thinking|thought|analysis)>", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\[(?:thinking|thought|analysis)\][\s\S]*?\[/(?:thinking|thought|analysis)\]", re.IGNORECASE | re.DOTALL),
+    re.compile(r"```[ \t]*(?:thinking|thought|analysis)[\s\S]*?```", re.IGNORECASE | re.DOTALL),
+)
+_SYSTEM_REMINDER_BLOCK = re.compile(
+    r"<(?:system_reminder|系统提醒)>[\s\S]*?</(?:system_reminder|系统提醒)>",
+    re.IGNORECASE | re.DOTALL,
+)
+_DECISION_XML_BLOCK = re.compile(
+    r"<系统决策>[\s\S]*?</系统决策>", re.IGNORECASE | re.DOTALL
+)
+
+
+def strip_group_aside_leak(text: str) -> str:
+    """去掉群聊输出里的结构化内部块与带标签旁白行。"""
+    if not text:
+        return text
+
+    cleaned = text
+    for pattern in _THINK_BLOCK_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+    cleaned = _SYSTEM_REMINDER_BLOCK.sub("", cleaned)
+    cleaned = _DECISION_XML_BLOCK.sub("", cleaned)
+
+    kept_lines = [
+        line
+        for line in cleaned.splitlines()
+        if line.strip() and not _ASIDE_TAG_LINE.match(line.strip())
+    ]
+    return "\n".join(kept_lines).strip()

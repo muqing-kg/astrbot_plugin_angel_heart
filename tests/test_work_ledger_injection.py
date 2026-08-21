@@ -28,6 +28,11 @@ for _mod_path in (
     sys.modules.setdefault(_mod_path, types.ModuleType(_mod_path))
 
 sys.modules["astrbot.api"].logger = MagicMock()
+sys.modules["astrbot.core.agent.message"].TextPart = type(
+    "TextPart",
+    (),
+    {"__init__": lambda self, text: setattr(self, "text", text)},
+)
 
 from astrbot_plugin_angel_heart.core.work_ledger import WorkLedger
 from astrbot_plugin_angel_heart.core.llm_analyzer import LLMAnalyzer
@@ -244,7 +249,7 @@ class TestAnalyzerPromptInjection:
 
 
 class TestTemporaryWorkContext:
-    def test_front_desk_builds_no_save_work_context_without_repeating_current_prompt(self):
+    def test_front_desk_builds_work_ledger_reminder_without_repeating_current_prompt(self):
         from astrbot_plugin_angel_heart.roles.front_desk import FrontDesk
 
         config = MagicMock()
@@ -273,12 +278,8 @@ class TestTemporaryWorkContext:
                     return "e1"
                 return d
 
-        ctx = fd._build_temporary_work_ledger_context("GroupMessage:1", E())
-        assert ctx is not None
-        assert ctx["_no_save"] is True
-        assert ctx["is_temporary_context"] is True
-        text = ctx["content"][0]["text"]
-        assert "<system_reminder>" in text
+        text = fd._build_temporary_work_ledger_reminder("GroupMessage:1", E())
+        assert text is not None
         assert "正在答群友问题" not in text
         assert "另一个工作" in text
         assert "请正常回答" not in text

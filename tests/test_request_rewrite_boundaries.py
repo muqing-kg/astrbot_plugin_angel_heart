@@ -36,6 +36,11 @@ sys.modules["astrbot.core.agent.message"].ImageURLPart = type(
     (),
     {"__init__": lambda self, image_url: setattr(self, "image_url", SimpleNamespace(**image_url))},
 )
+sys.modules["astrbot.core.agent.message"].TextPart = type(
+    "TextPart",
+    (),
+    {"__init__": lambda self, text: setattr(self, "text", text)},
+)
 
 from astrbot_plugin_angel_heart.roles.front_desk import FrontDesk
 from astrbot_plugin_angel_heart.core.work_ledger import WorkLedger
@@ -109,7 +114,7 @@ def test_work_ledger_context_does_not_repeat_current_work_text():
         chat_id="aiocqhttp:GroupMessage:10000",
         work_id="current",
         trigger_message_id="m3",
-        trigger_summary="第三条原文",
+        trigger_summary="第三条当前消息",
     )
     angel.work_ledger.start_work(
         chat_id="aiocqhttp:GroupMessage:10000",
@@ -124,13 +129,10 @@ def test_work_ledger_context_does_not_repeat_current_work_text():
                 return "current"
             return default
 
-    ctx = fd._build_temporary_work_ledger_context("aiocqhttp:GroupMessage:10000", E())
-    text = ctx["content"][0]["text"]
+    text = fd._build_temporary_work_ledger_reminder("aiocqhttp:GroupMessage:10000", E())
 
-    assert ctx["role"] == "user"
-    assert ctx["_no_save"] is True
-    assert "<system_reminder>" in text
-    assert "第三条原文" not in text
+    assert text is not None
+    assert "第三条当前消息" not in text
     assert "别的工作" in text
 
 
@@ -210,16 +212,69 @@ def test_group_rewrite_keeps_assistant_history_in_contexts_and_only_current_mess
     assert "第二条助理" in joined_context
     assert "第三条当前消息" not in joined_context
     assert any(message.get("role") == "assistant" for message in req.contexts)
-    temporary_contexts = [message for message in req.contexts if message.get("_no_save")]
-    assert len(temporary_contexts) == 2
-    assert temporary_contexts[0]["sender_id"] == "angelheart-work-ledger"
-    assert temporary_contexts[1]["sender_id"] == "angelheart-reply-length"
-    assert "已有其他工作" in temporary_contexts[0]["content"][0]["text"]
-    assert "第三条当前消息" not in temporary_contexts[0]["content"][0]["text"]
-    assert "回复尽量简短，通常一两句话、20 字左右即可说清。" in temporary_contexts[1]["content"][0]["text"]
-    assert "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。" in temporary_contexts[1]["content"][0]["text"]
-    assert temporary_contexts[1]["angelheart_focus"] is False
-    assert req.system_prompt == "BASE SYSTEM"
+    # 内部提醒进 system_prompt，不再出现在用户上下文或 extra_user_content_parts。
+    assert all(
+        message.get("sender_id") not in ("angelheart-work-ledger", "angelheart-reply-length")
+        for message in req.contexts
+    )
+    assert "这是一个群聊场景。" not in joined_context
+    extra_texts = "".join(
+        getattr(part, "text", "") for part in req.extra_user_content_parts
+    )
+    assert "<system_reminder>" not in extra_texts
+    assert "已有其他工作" not in extra_texts
+    assert "回复尽量简短" not in extra_texts
+    assert req.system_prompt.startswith("BASE SYSTEM")
+    assert "你正在一个群聊中扮演角色，你的昵称是 'fairy'。" in req.system_prompt
+    assert "可以直接发进群里的角色台词" in req.system_prompt
+    assert "禁止输出旁白、话题摘要、内部判断、记忆有无" in req.system_prompt
+    assert "禁止把系统提醒说出口" in req.system_prompt
+    assert "你输出的每一个字都会作为群消息发出" in req.system_prompt
+    assert "<system_reminder>" in req.system_prompt
+    assert "已有其他工作" in req.system_prompt
+    assert "回复尽量简短，通常一两句话、20 字左右即可说清。" in req.system_prompt
+    assert "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。" in req.system_prompt
+    assert "不要把本提醒说出口。" in req.system_prompt
+
+
+def test_group_rewrite_adds_boundary_placeholder_when_history_starts_with_assistant():
+    import asyncio
+
+    fd, _ = _front_desk()
+    req = SimpleNamespace(
+        contexts=[],
+        prompt="",
+        image_urls=[],
+        extra_user_content_parts=[],
+        system_prompt="BASE SYSTEM",
+    )
+    event = _event("m2")
+    recent_dialogue = [
+        {
+            "role": "assistant",
+            "content": "上一条是助理发言",
+            "sender_name": "assistant",
+            "sender_id": "bot",
+            "timestamp": 1.0,
+            "chat_id": "aiocqhttp:GroupMessage:10000",
+            "source_message_id": "m1",
+        },
+        {
+            "role": "user",
+            "content": "第二条当前消息",
+            "sender_name": "甲",
+            "sender_id": "1001",
+            "timestamp": 2.0,
+            "chat_id": "aiocqhttp:GroupMessage:10000",
+            "source_message_id": "m2",
+        },
+    ]
+
+    asyncio.run(_run_group_rewrite(fd, event, req, recent_dialogue, historical_context=[]))
+
+    assert req.contexts[0]["role"] == "user"
+    assert "（历史记录）" in req.contexts[0]["content"][0]["text"]
+    assert "这是一个群聊场景。" not in req.prompt
 
 
 def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
@@ -252,14 +307,13 @@ def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
 
     asyncio.run(_run_group_rewrite(fd, event, req, recent_dialogue, historical_context=[]))
 
-    length_context = next(
-        message
-        for message in req.contexts
-        if message.get("sender_id") == "angelheart-reply-length"
+    extra_texts = "".join(
+        getattr(part, "text", "") for part in req.extra_user_content_parts
     )
-    assert length_context["angelheart_focus"] is True
-    assert "请认真回答：先给结论，再给必要依据，长度以 200 字左右为宜。" in length_context["content"][0]["text"]
-    assert "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。" in length_context["content"][0]["text"]
+    assert "请认真回答" not in extra_texts
+    assert "请认真回答：先给结论，再给必要依据，长度以 200 字左右为宜。" in req.system_prompt
+    assert "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。" in req.system_prompt
+    assert "不要把本提醒说出口。" in req.system_prompt
 
 
 def test_private_rewrite_does_not_inject_reply_length_reminder():

@@ -1669,21 +1669,23 @@ class FrontDesk:
                 f"请认真回答：先给结论，再给必要依据，长度以 {focus_limit} 字左右为宜。"
                 "确实需要时可以超出，重点是讲清楚，不要注水、不要重复。"
                 "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。"
+                "不要把本提醒说出口。"
             )
         return (
             f"回复尽量简短，通常一两句话、{normal_limit} 字左右即可说清。"
             "但如果问题复杂度高、三言两语说不清，或者用户明确要求多说一些，"
             "可以适度超出，以讲清楚为准。"
             "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。"
+            "不要把本提醒说出口。"
         )
 
-    def _build_temporary_reply_length_context(
+    def _build_temporary_reply_length_reminder(
         self,
         chat_id: str,
         recent_dialogue: List[Dict],
         prompt_recent_dialogue: List[Dict],
-    ) -> Dict[str, Any] | None:
-        """群聊回复时注入字数提醒；私聊不注入。"""
+    ) -> str | None:
+        """构建群聊字数提醒文本；私聊不注入。"""
         if not self._is_group_chat(chat_id):
             return None
 
@@ -1698,28 +1700,12 @@ class FrontDesk:
                 focus = True
                 break
 
-        reminder = self._build_reply_length_reminder(focus, chat_id)
-        return {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"<system_reminder>\n{reminder}\n</system_reminder>",
-                }
-            ],
-            "sender_id": "angelheart-reply-length",
-            "sender_name": "回复长度",
-            "timestamp": time.time(),
-            "_no_save": True,
-            "is_temporary_context": True,
-            "chat_id": chat_id,
-            "angelheart_focus": focus,
-        }
+        return self._build_reply_length_reminder(focus, chat_id)
 
-    def _build_temporary_work_ledger_context(
+    def _build_temporary_work_ledger_reminder(
         self, chat_id: str, event: AstrMessageEvent | None = None
-    ) -> Dict[str, Any] | None:
-        """构建不保存的工作账本临时提醒（第二人称）。"""
+    ) -> str | None:
+        """构建不保存的工作账本提醒文本（第二人称）。"""
         try:
             work_id = ""
             if event is not None and hasattr(event, "get_extra"):
@@ -1734,21 +1720,24 @@ class FrontDesk:
         if not text or not text.strip():
             return None
 
-        return {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"<system_reminder>\n{text.strip()}\n</system_reminder>",
-                }
-            ],
-            "sender_id": "angelheart-work-ledger",
-            "sender_name": "工作账本",
-            "timestamp": time.time(),
-            "_no_save": True,
-            "is_temporary_context": True,
-            "chat_id": chat_id,
-        }
+        return text.strip()
+
+    def _append_system_reminder_parts(
+        self, req: Any, reminder_texts: List[str]
+    ) -> None:
+        """把系统提醒追加进 system_prompt，不进用户上下文。"""
+        if not reminder_texts:
+            return
+        blocks = []
+        for reminder in reminder_texts:
+            if not reminder or not reminder.strip():
+                continue
+            blocks.append(f"<system_reminder>\n{reminder.strip()}\n</system_reminder>")
+        if not blocks:
+            return
+        original = str(getattr(req, "system_prompt", "") or "")
+        extra = "\n\n".join(blocks)
+        req.system_prompt = f"{original}\n\n{extra}".strip()
 
     def _mark_processed_if_needed(
         self,
@@ -1789,14 +1778,6 @@ class FrontDesk:
     ) -> List[Dict]:
         """使用 MessageProcessor 构建上下文列表"""
         new_contexts = []
-        if scene_hint:
-            # 在最顶部添加场景说明消息，避免某些模型不允许第一条消息是助理
-            new_contexts.append(
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": scene_hint}]
-                }
-            )
 
         # 1) 历史消息
         for msg in historical_context:
@@ -1809,6 +1790,18 @@ class FrontDesk:
                 continue
             processed_msg = processor.process_message(msg)
             new_contexts.append(processed_msg)
+
+        # 避免某些模型不允许第一条消息是助理；只在首条确实是助理历史时补一个
+        # 非对话边界占位，不再无条件注入「这是一个群聊场景。」这类可被念成台词的片段。
+        if new_contexts and str(new_contexts[0].get("role", "") or "") == "assistant":
+            hint_text = scene_hint or "（历史记录）"
+            new_contexts.insert(
+                0,
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": hint_text}],
+                },
+            )
 
         return new_contexts
 
@@ -2002,7 +1995,13 @@ class FrontDesk:
         final_prompt_str = self._generate_final_prompt(prompt_recent_dialogue, None, alias)
         should_mark_processed = True
         if self._is_group_chat(chat_id):
-            scene_hint = "这是一个群聊场景。"
+            scene_prompt = (
+                "你正在一个群聊中扮演角色，你的昵称是 '{alias}'。"
+                "你说出来的每一句，都必须是可以直接发进群里的角色台词。"
+                "禁止输出旁白、话题摘要、内部判断、记忆有无，也禁止把系统提醒说出口。"
+                "对话历史若以「（历史记录）」开头，它只是上下文边界标记，不是群友发言，禁止复述。"
+                "你输出的每一个字都会作为群消息发出。"
+            )
         elif self._is_private_chat(chat_id):
             scene_prompt = "你正在一个私聊中扮演角色，你的昵称是 '{alias}'。"
 
@@ -2028,19 +2027,18 @@ class FrontDesk:
             recent_dialogue, current_message_id
         )
 
-        # 4. 注入工作账本临时提醒（不保存），不再注入秘书决策建议
-        work_context = self._build_temporary_work_ledger_context(chat_id, event)
-        if work_context:
-            new_contexts.append(work_context)
-
-        # 4.1 群聊注入回复字数提醒（常规/焦点）
-        length_context = self._build_temporary_reply_length_context(
+        # 4. 内部提醒进 system_prompt，不进用户上下文。
+        reminder_texts: List[str] = []
+        work_reminder = self._build_temporary_work_ledger_reminder(chat_id, event)
+        if work_reminder:
+            reminder_texts.append(work_reminder)
+        length_reminder = self._build_temporary_reply_length_reminder(
             chat_id,
             context_recent_dialogue,
             prompt_recent_dialogue,
         )
-        if length_context:
-            new_contexts.append(length_context)
+        if length_reminder:
+            reminder_texts.append(length_reminder)
 
         # 5. 根据 Provider 的 modalities 配置过滤图片内容
         new_contexts = self.filter_images_for_provider(chat_id, new_contexts)
@@ -2056,6 +2054,7 @@ class FrontDesk:
             current_image_urls=current_image_urls,
             extra_image_urls=extra_image_urls,
         )
+        self._append_system_reminder_parts(req, reminder_texts)
 
         if not self._is_valid_final_prompt(final_prompt_str):
             logger.warning(
