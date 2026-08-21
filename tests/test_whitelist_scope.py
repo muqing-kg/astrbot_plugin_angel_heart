@@ -228,6 +228,19 @@ def test_whitelist_helper_fails_closed_on_config_error():
     assert plugin._is_whitelist_blocked("aiocqhttp:GroupMessage:1") is True
 
 
+def test_whitelist_helper_keeps_private_chat_open_on_config_error():
+    """配置异常时群聊拦截，私聊仍放行。"""
+    plugin = _make_plugin(chat_ids=("2",))
+
+    def boom():
+        raise RuntimeError("config read failed")
+
+    plugin.config_manager.whitelist_enabled = boom
+
+    assert plugin._is_whitelist_blocked("aiocqhttp:FriendMessage:1") is False
+    assert plugin._is_whitelist_blocked("aiocqhttp:PrivateMessage:1") is False
+
+
 @pytest.mark.asyncio
 async def test_side_hooks_skip_outside_whitelist():
     """三个旁路钩子对非白名单群聊直接跳过，不再产生插件副作用。"""

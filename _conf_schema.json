@@ -260,7 +260,7 @@
       "chat_ids": {
         "type": "list",
         "description": "群聊ID白名单",
-        "hint": "请直接填写需要启用白名单的群聊或好友的QQ号列表。",
+        "hint": "请直接填写需要启用插件的群聊 QQ 号。私聊不受白名单约束。",
         "items": { "type": "string" },
         "default": []
       },

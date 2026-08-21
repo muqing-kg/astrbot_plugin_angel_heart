@@ -309,7 +309,11 @@ class AngelHeartPlugin(Star):
             return plain_chat_id not in self._whitelist_cache
         except Exception as e:
             logger.warning(f"AngelHeart[{chat_id}]: 判断白名单拦截失败: {e}")
-            return True
+            # 配置异常时群聊保守拦截；私聊仍不受白名单约束。
+            try:
+                return not self._is_private_chat(chat_id)
+            except Exception:
+                return True
 
     def _is_group_chat(self, unified_id: str) -> bool:
         """根据 unified_msg_origin 判断是否为群聊。"""
