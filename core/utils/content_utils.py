@@ -107,3 +107,37 @@ def strip_period_before_newline(text: str) -> str:
     if not text:
         return text
     return re.sub(r"。(\r?\n)", r"\1", text)
+
+
+_ASIDE_LINE_PATTERNS = (
+    re.compile(r"群友在聊|群里.{0,8}(人挺多|正在|在讨论|在聊)|话题摘要|当前话题|参考核心话题"),
+    re.compile(r"简短接话|别刷屏|不要刷屏|回复尽量简短|字左右即可|先给结论|不要把本提醒说出口"),
+    re.compile(r"(没|没有|无).{0,8}(相关)?记忆|记忆有无|工作账本|继续观察|我不接|安静待着"),
+    re.compile(r"^依据如下|^内部判断|^系统提醒|推荐执行策略|建议交互对象"),
+)
+_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+_SYSTEM_REMINDER_BLOCK = re.compile(
+    r"<system_reminder>[\s\S]*?</system_reminder>", re.IGNORECASE
+)
+_DECISION_XML_BLOCK = re.compile(
+    r"<系统决策>[\s\S]*?</系统决策>"
+)
+
+
+def strip_group_aside_leak(text: str) -> str:
+    """去掉群聊输出里的内部旁白、系统提醒和思维块。"""
+    if not text:
+        return text
+
+    cleaned = _THINK_BLOCK.sub("", text)
+    cleaned = _SYSTEM_REMINDER_BLOCK.sub("", cleaned)
+    cleaned = _DECISION_XML_BLOCK.sub("", cleaned)
+    kept_lines = []
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(pattern.search(stripped) for pattern in _ASIDE_LINE_PATTERNS):
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines).strip()

@@ -92,6 +92,7 @@ sys.modules["astrbot.core.message.components"].File = type(
 sys.modules["astrbot.core.message.components"].Image = type("Image", (), {})
 
 from astrbot_plugin_angel_heart.core.utils import strip_period_before_newline
+from astrbot_plugin_angel_heart.core.utils.content_utils import strip_group_aside_leak
 
 
 class TestStripPeriodBeforeNewline:
@@ -207,3 +208,71 @@ class TestHookStripsPeriodBeforeNewline:
         # 上游指令事件直接返回，不清理
         assert result.chain[0].text == "你好。\n明天见。"
         plugin.angel_context.debounce_manager.charge_reply_energy.assert_not_awaited()
+
+
+class TestStripGroupAsideLeak:
+    def test_drops_topic_summary_length_and_memory_asides(self):
+        leaked = (
+            "群友在聊《黑神话：钟馗》实机演示，还有人说揠草。"
+            "群里人挺多，我尽量简短接话，别刷屏。"
+            "没相关记忆，随便接一句就成"
+        )
+        assert strip_group_aside_leak(leaked) == ""
+
+    def test_keeps_normal_in_character_line(self):
+        text = "这实机看着挺阴的，揠草大概是技能名吧"
+        assert strip_group_aside_leak(text) == text
+
+    def test_strips_system_reminder_and_think_blocks(self):
+        text = "<think>先观察一下</think>正常台词<system_reminder>回复尽量简短</system_reminder>"
+        assert strip_group_aside_leak(text) == "正常台词"
+
+    def test_drops_other_internal_strategy_and_memory_lines(self):
+        leaked = (
+            "当前话题是插件配置。\n"
+            "回复尽量简短，通常一两句话即可说清。\n"
+            "没有相关记忆，先观察一下。\n"
+            "依据如下：群里正在闲聊。"
+        )
+        assert strip_group_aside_leak(leaked) == ""
+
+    def test_drops_decision_xml_and_observe_strategy(self):
+        leaked = (
+            "<系统决策><参考核心话题>插件</参考核心话题>"
+            "<建议交互对象>甲</建议交互对象>"
+            "<推荐执行策略>继续观察</推荐执行策略></系统决策>\n"
+            "安静待着，我不接。"
+        )
+        assert strip_group_aside_leak(leaked) == ""
+
+
+class TestHookStripsGroupAsideLeak:
+    @pytest.mark.asyncio
+    async def test_hook_clears_chain_when_only_aside_remains(self):
+        from astrbot.core.message.components import Plain
+        from astrbot_plugin_angel_heart.main import AngelHeartPlugin
+
+        plugin = object.__new__(AngelHeartPlugin)
+
+        class _FakeRuntimeTasks:
+            async def run(self, event, fn):
+                return await fn()
+
+        plugin._runtime_tasks = _FakeRuntimeTasks()
+        plugin.config_manager = MagicMock()
+        plugin.config_manager.strip_period_before_newline = False
+        plugin.config_manager.strip_markdown_enabled = False
+        plugin._is_upstream_command_event = MagicMock(return_value=False)
+        plugin._is_astrbot_error_message = MagicMock(return_value=False)
+        plugin.angel_context = MagicMock()
+        plugin.angel_context.debounce_manager.charge_reply_energy = AsyncMock()
+
+        event = MagicMock()
+        event.unified_msg_origin = "aiocqhttp:GroupMessage:1"
+        result = MagicMock()
+        result.chain = [Plain(text="没相关记忆，随便接一句就成")]
+        event.get_result.return_value = result
+
+        await plugin.strip_markdown_on_decorating_result(event)
+
+        assert result.chain == []

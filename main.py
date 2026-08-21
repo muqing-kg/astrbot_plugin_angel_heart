@@ -33,7 +33,11 @@ from .core.config_manager import ConfigManager
 from .core.config_migration import run_migration
 from .roles.front_desk import FrontDesk
 from .roles.secretary import Secretary
-from .core.utils import strip_markdown, strip_period_before_newline
+from .core.utils import (
+    strip_markdown,
+    strip_period_before_newline,
+    strip_group_aside_leak,
+)
 from .core.utils.message_utils import (
     extract_completed_agent_messages,
     serialize_agent_run_message,
@@ -513,6 +517,22 @@ class AngelHeartPlugin(Star):
                                 logger.debug(
                                     f"AngelHeart[{chat_id}]: 已清理句末句号: '{original_text[:50]}...' -> '{cleaned_text[:50]}...'"
                                 )
+
+            leftover_text = ""
+            for i, component in enumerate(list(message_chain)):
+                if not isinstance(component, Plain) or not component.text:
+                    continue
+                cleaned_text = strip_group_aside_leak(component.text)
+                if cleaned_text != component.text:
+                    message_chain[i] = Plain(text=cleaned_text)
+                leftover_text += cleaned_text
+            if leftover_text.strip() == "" and all(
+                isinstance(component, Plain) for component in message_chain
+            ):
+                result = event.get_result()
+                if result:
+                    result.chain = []
+                return
 
             await self.angel_context.debounce_manager.charge_reply_energy(
                 event, message_chain

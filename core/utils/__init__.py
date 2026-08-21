@@ -9,6 +9,7 @@ from .content_utils import (
     convert_content_to_string,
     strip_markdown,
     strip_period_before_newline,
+    strip_group_aside_leak,
 )
 from .message_hits import (
     build_message_metadata,
@@ -40,6 +41,7 @@ __all__ = [
     'convert_content_to_string',
     'strip_markdown',
     'strip_period_before_newline',
+    'strip_group_aside_leak',
 
     # 正文命中相关
     'build_message_metadata',

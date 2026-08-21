@@ -1725,24 +1725,19 @@ class FrontDesk:
     def _append_system_reminder_parts(
         self, req: Any, reminder_texts: List[str]
     ) -> None:
-        """把系统提醒添加到当前用户消息尾部，不再伪装成假用户上下文。"""
+        """把系统提醒追加进 system_prompt，不进用户上下文。"""
         if not reminder_texts:
             return
-        try:
-            from astrbot.core.agent.message import TextPart
-        except Exception as e:
-            logger.warning(f"AngelHeart: 导入 TextPart 失败，跳过系统提醒注入: {e}")
-            return
-
-        if not hasattr(req, "extra_user_content_parts") or req.extra_user_content_parts is None:
-            req.extra_user_content_parts = []
-
+        blocks = []
         for reminder in reminder_texts:
             if not reminder or not reminder.strip():
                 continue
-            req.extra_user_content_parts.append(
-                TextPart(text=f"<system_reminder>\n{reminder.strip()}\n</system_reminder>")
-            )
+            blocks.append(f"<system_reminder>\n{reminder.strip()}\n</system_reminder>")
+        if not blocks:
+            return
+        original = str(getattr(req, "system_prompt", "") or "")
+        extra = "\n\n".join(blocks)
+        req.system_prompt = f"{original}\n\n{extra}".strip()
 
     def _mark_processed_if_needed(
         self,
@@ -1996,11 +1991,11 @@ class FrontDesk:
         final_prompt_str = self._generate_final_prompt(prompt_recent_dialogue, None, alias)
         should_mark_processed = True
         if self._is_group_chat(chat_id):
-            scene_hint = "这是一个群聊场景。"
             scene_prompt = (
                 "你正在一个群聊中扮演角色，你的昵称是 '{alias}'。"
                 "你说出来的每一句，都必须是可以直接发进群里的角色台词。"
                 "禁止输出旁白、话题摘要、内部判断、记忆有无，也禁止把系统提醒说出口。"
+                "你输出的每一个字都会作为群消息发出。"
             )
         elif self._is_private_chat(chat_id):
             scene_prompt = "你正在一个私聊中扮演角色，你的昵称是 '{alias}'。"
@@ -2027,8 +2022,7 @@ class FrontDesk:
             recent_dialogue, current_message_id
         )
 
-        # 4. 注入系统提醒到当前用户消息尾部，不再伪装成假用户上下文。
-        #    工作账本与字数提醒都走同一通道，防止模型把内部提醒当成台词念出。
+        # 4. 内部提醒进 system_prompt，不进用户上下文。
         reminder_texts: List[str] = []
         work_reminder = self._build_temporary_work_ledger_reminder(chat_id, event)
         if work_reminder:
@@ -2040,7 +2034,6 @@ class FrontDesk:
         )
         if length_reminder:
             reminder_texts.append(length_reminder)
-        self._append_system_reminder_parts(req, reminder_texts)
 
         # 5. 根据 Provider 的 modalities 配置过滤图片内容
         new_contexts = self.filter_images_for_provider(chat_id, new_contexts)
@@ -2056,6 +2049,7 @@ class FrontDesk:
             current_image_urls=current_image_urls,
             extra_image_urls=extra_image_urls,
         )
+        self._append_system_reminder_parts(req, reminder_texts)
 
         if not self._is_valid_final_prompt(final_prompt_str):
             logger.warning(

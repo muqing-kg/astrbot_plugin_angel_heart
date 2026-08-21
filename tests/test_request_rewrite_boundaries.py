@@ -212,24 +212,29 @@ def test_group_rewrite_keeps_assistant_history_in_contexts_and_only_current_mess
     assert "第二条助理" in joined_context
     assert "第三条当前消息" not in joined_context
     assert any(message.get("role") == "assistant" for message in req.contexts)
-    # 系统提醒不再伪装成假群友用户上下文，只挂到当前用户消息尾部的 system_reminder 块。
+    # 内部提醒进 system_prompt，不再出现在用户上下文或 extra_user_content_parts。
     assert all(
         message.get("sender_id") not in ("angelheart-work-ledger", "angelheart-reply-length")
         for message in req.contexts
     )
+    assert "这是一个群聊场景。" not in joined_context
     extra_texts = "".join(
         getattr(part, "text", "") for part in req.extra_user_content_parts
     )
-    assert "<system_reminder>" in extra_texts
-    assert "已有其他工作" in extra_texts
-    assert "回复尽量简短，通常一两句话、20 字左右即可说清。" in extra_texts
-    assert "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。" in extra_texts
-    assert "不要把本提醒说出口。" in extra_texts
+    assert "<system_reminder>" not in extra_texts
+    assert "已有其他工作" not in extra_texts
+    assert "回复尽量简短" not in extra_texts
     assert req.system_prompt.startswith("BASE SYSTEM")
     assert "你正在一个群聊中扮演角色，你的昵称是 'fairy'。" in req.system_prompt
     assert "可以直接发进群里的角色台词" in req.system_prompt
     assert "禁止输出旁白、话题摘要、内部判断、记忆有无" in req.system_prompt
     assert "禁止把系统提醒说出口" in req.system_prompt
+    assert "你输出的每一个字都会作为群消息发出" in req.system_prompt
+    assert "<system_reminder>" in req.system_prompt
+    assert "已有其他工作" in req.system_prompt
+    assert "回复尽量简短，通常一两句话、20 字左右即可说清。" in req.system_prompt
+    assert "不要正反面讲解，直接给出你认为的最佳结论，不需要推理过程。" in req.system_prompt
+    assert "不要把本提醒说出口。" in req.system_prompt
 
 
 def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
@@ -265,9 +270,10 @@ def test_group_rewrite_uses_focus_reply_length_when_focus_instruction_hits():
     extra_texts = "".join(
         getattr(part, "text", "") for part in req.extra_user_content_parts
     )
-    assert "请认真回答：先给结论，再给必要依据，长度以 200 字左右为宜。" in extra_texts
-    assert "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。" in extra_texts
-    assert "不要把本提醒说出口。" in extra_texts
+    assert "请认真回答" not in extra_texts
+    assert "请认真回答：先给结论，再给必要依据，长度以 200 字左右为宜。" in req.system_prompt
+    assert "如果是分析的，不要正反面讲解，直接给出你认为的最佳结论，只给出必要的关键推理。" in req.system_prompt
+    assert "不要把本提醒说出口。" in req.system_prompt
 
 
 def test_private_rewrite_does_not_inject_reply_length_reminder():
